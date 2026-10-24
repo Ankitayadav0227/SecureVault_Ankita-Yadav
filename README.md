@@ -8,8 +8,8 @@ Zero-knowledge file sharing built on the MERN stack. Files are encrypted in the 
 - Chunked, parallel uploads (8 MB chunks, 4 at a time) streamed straight into S3 multipart or local disk
 - Owner / viewer RBAC stored in MongoDB, enforced on every metadata and chunk request
 - Two sharing modes
-  - **User share** ΓÇô file key wrapped with an ECDH (P-256) derived key between owner and recipient
-  - **Password link** ΓÇô file key wrapped with PBKDF2(password); link token lives in the URL fragment
+  - **User share** - file key wrapped with an ECDH (P-256) derived key between owner and recipient
+  - **Password link** - file key wrapped with PBKDF2(password); link token lives in the URL fragment
 - Revocation by **real key rotation**: the file is re-encrypted under a new key and the old ciphertext is deleted
 - Audit trail for every access (allowed and denied) at `GET /api/audit/:fileId`
 - In-browser preview of decrypted PDFs and images (strict type allow-list)
@@ -51,7 +51,7 @@ Upgrading from an older build? The login scheme changed, so old test accounts ca
 1. Browser generates a random 256-bit file key and a 96-bit base IV.
 2. The file is sliced into 8 MB chunks. Each chunk is encrypted with AES-GCM using `IV = baseIV XOR chunkIndex` and the chunk index as additional authenticated data (so chunks can't be reordered or swapped).
 3. The file key is wrapped with the owner's KEK (PBKDF2 of the account password) and sent with `/files/init`. The raw key never leaves the browser.
-4. Chunks are `PUT` as raw bytes to `/files/:id/chunks/:index`. The server checks the length is exactly `plaintext + 16` and pipes the request stream directly to the storage driver ΓÇô nothing is buffered in memory.
+4. Chunks are `PUT` as raw bytes to `/files/:id/chunks/:index`. The server checks the length is exactly `plaintext + 16` and pipes the request stream directly to the storage driver - nothing is buffered in memory.
 5. `/files/:id/complete` checks all chunks arrived and completes the S3 multipart upload.
 
 ### Accounts and keys
@@ -74,12 +74,13 @@ Revoking an ACL entry stops the server from handing out ciphertext to that princ
 2. `POST /api/shares/:fileId/rotate { newFileId }` swaps the new ciphertext into the original file record (same id, same audit trail), bumps `keyVersion`, revokes **every** viewer and link entry, stores the new owner-wrapped key, and deletes the old ciphertext from storage.
 3. ACL entries carrying an older `keyVersion` are also rejected by the middleware.
 
-Result: an old key no longer opens anything that still exists on the server. Content a recipient already decrypted and saved obviously can't be "un-shared" ΓÇô no system can do that. The end-to-end test proves that the old key fails on the new ciphertext.
+Result: an old key no longer opens anything that still exists on the server. Content a recipient already decrypted and saved obviously can't be "un-shared" - no system can do that. The end-to-end test proves that the old key fails on the new ciphertext.
 
 ### Known limitations
 - File names and sizes are stored in plaintext (needed for listing). They could be encrypted with the owner key too, at the cost of server-side sorting/search.
 - Encrypted search (homomorphic) is not implemented.
 - Downloads and rotation assemble the file in memory as a Blob. For multi-GB files a Service Worker + StreamSaver approach would be better.
+- Each chunk is authenticated, but the chunk count comes from server metadata, so a malicious server could drop trailing chunks without the client noticing. Authenticating the chunk count (for example inside the wrapped key blob) would close this.
 - Rotation is not atomic across MongoDB documents (standalone Mongo has no transactions). The swap is ordered so a failure leaves the file readable by the owner; a leftover temporary upload can be deleted from the UI.
 - A weak password can still be guessed offline by anyone who steals the database (they hold a bcrypt verifier and the wrapped private key). PBKDF2 and bcrypt only slow this down; use a long passphrase.
 - Link passwords are guessable offline by anyone who has the link token. Use a strong link password.
@@ -90,7 +91,7 @@ Result: an old key no longer opens anything that still exists on the server. Con
 
 | Topic | Decision | Why |
 |---|---|---|
-| Cipher | AES-256-GCM | Authenticated ΓÇô tampered chunks fail to decrypt instead of producing garbage |
+| Cipher | AES-256-GCM | Authenticated - tampered chunks fail to decrypt instead of producing garbage |
 | Chunk IVs | baseIV XOR index, index as AAD | Unique IV per chunk under one key, prevents chunk reordering |
 | Password KDF | PBKDF2-SHA256, 310k iter | Native in WebCrypto (Argon2 would need WASM); OWASP 2023 recommendation |
 | Login | Browser sends a derived `authSecret`, never the password | Server can't derive the key that unlocks the private key (zero-knowledge) |
@@ -113,14 +114,18 @@ Result: an old key no longer opens anything that still exists on the server. Con
 
 ## Performance
 
-Upload timing is printed in the browser console (`[upload] <name>: <seconds>s`). Memory stays flat during upload because only 4 chunks (~32 MB) are in flight.
+Timings are printed in the browser console as `[upload] <name> (<size>): <seconds>s` and `[download] <name> (<size>): <seconds>s`. The upload timer covers encryption, transfer and the final "complete" request. Memory stays flat during upload because only 4 chunks (~32 MB) are in flight.
 
-Measure on your own machine and fill in the table (target: 1 GB in under 5 minutes):
+Measured with Chrome, the Vite dev server, and the local storage driver (target: 1 GB in under 5 minutes):
 
-| File | Upload (encrypt + send) | Download (fetch + decrypt) | Setup |
-|---|---|---|---|
-| 100 MB | _fill in_ | _fill in_ | _browser, CPU, local/S3_ |
-| 1 GB | _fill in_ | _fill in_ | _browser, CPU, local/S3_ |
+| File | Upload (encrypt + send) | Download (fetch + decrypt) |
+|---|---|---|
+| 922.8 KB (JPG) | 0.1 s | not measured |
+| 7.3 MB (ZIP) | 0.2 s | not measured |
+| 11.3 MB (ZIP) | 0.2 s | not measured |
+| 1.3 GB (ZIP) | 19.0 s | not measured |
+
+The 1.3 GB upload finished in 19 seconds, far inside the 5 minute target.
 
 ## Tests
 
@@ -146,7 +151,7 @@ cd client && VITE_API_URL=http://localhost:5000/api \
 
 | Method | Route | Auth |
 |---|---|---|
-| POST | `/api/auth/register`, `/api/auth/login` | ΓÇô |
+| POST | `/api/auth/register`, `/api/auth/login` | none |
 | GET | `/api/auth/me` | JWT |
 | POST | `/api/auth/mfa/setup`, `/api/auth/mfa/verify` | JWT |
 | GET | `/api/files` | JWT |
@@ -161,13 +166,3 @@ cd client && VITE_API_URL=http://localhost:5000/api \
 | POST | `/api/shares/:id/rotate` | owner |
 | DELETE | `/api/shares/:id/:aclId` | owner |
 | GET | `/api/audit/:fileId` | owner |
-
-
-Filesize	  Upload  	Download	Notes
-922.8 KB	  0.1 s	     TBD	    JPG
-7.3 MB	    0.2 s	     TBD	    ZIP
-11.3 MB	    0.2 s	     TBD	    ZIP
-1.3 GB	   19.0 s	     TBD      ZIP,well under the 5 minute target for 1 GB
-
-
-TODO: fill in the TBD cells from real runs and note the CPU and RAM of the test machine.
