@@ -39,7 +39,8 @@ export async function uploadFile(file, kek, onProgress) {
     onProgress?.(done / chunkCount, (done * C.CHUNK_SIZE) / ((performance.now() - started) / 1000));
   });
   await api.post(`/files/${data.fileId}/complete`);
-  console.info(`[upload] ${file.name}: ${((performance.now() - started) / 1000).toFixed(1)}s`);
+  // Timer covers the whole flow: encrypt + upload + "complete" request.
+  console.info(`[upload] ${file.name} (${fmtBytes(file.size)}): ${((performance.now() - started) / 1000).toFixed(1)}s`);
   return data.fileId;
 }
 
@@ -64,12 +65,16 @@ export async function downloadFile(fileId, creds, headers = {}, onProgress) {
   const baseIv = C.unb64(meta.baseIv);
   const parts = new Array(meta.chunkCount);
   let done = 0;
+  const started = performance.now();
   await pool(meta.chunkCount, async (i) => {
     const { data } = await withRetry(() => api.get(`/files/${fileId}/chunks/${i}`, { responseType: 'arraybuffer', headers }));
     parts[i] = await C.decryptChunk(key, baseIv, i, data);
     onProgress?.(++done / meta.chunkCount);
   });
-  return { blob: new Blob(parts, { type: meta.mime }), meta };
+  const blob = new Blob(parts, { type: meta.mime });
+  // Timer covers fetch + decrypt of all chunks.
+  console.info(`[download] ${meta.name} (${fmtBytes(blob.size)}): ${((performance.now() - started) / 1000).toFixed(1)}s`);
+  return { blob, meta };
 }
 
 // Real key rotation: decrypt, encrypt again under a brand new key + IV, upload

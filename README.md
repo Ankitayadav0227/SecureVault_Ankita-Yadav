@@ -163,5 +163,11 @@ cd client && VITE_API_URL=http://localhost:5000/api \
 | GET | `/api/audit/:fileId` | owner |
 
 
-   | 100 MB | 4.2 s | 3.1 s | Chrome, i5, local storage |
-   | 1 GB | 48 s | 36 s | Chrome, i5, local storage |
+Filesize	  Upload  	Download	Notes
+922.8 KB	  0.1 s	     TBD	    JPG
+7.3 MB	    0.2 s	     TBD	    ZIP
+11.3 MB	    0.2 s	     TBD	    ZIP
+1.3 GB	   19.0 s	     TBD      ZIP,well under the 5 minute target for 1 GB
+
+
+TODO: fill in the TBD cells from real runs and note the CPU and RAM of the test machine.
