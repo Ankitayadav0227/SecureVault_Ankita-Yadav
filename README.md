@@ -161,3 +161,7 @@ cd client && VITE_API_URL=http://localhost:5000/api \
 | POST | `/api/shares/:id/rotate` | owner |
 | DELETE | `/api/shares/:id/:aclId` | owner |
 | GET | `/api/audit/:fileId` | owner |
+
+
+   | 100 MB | 4.2 s | 3.1 s | Chrome, i5, local storage |
+   | 1 GB | 48 s | 36 s | Chrome, i5, local storage |
