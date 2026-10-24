@@ -1,6 +1,3 @@
-// All cryptography lives here and only runs in the browser.
-// AES-256-GCM for file data, PBKDF2-SHA256 for password derived keys,
-// ECDH P-256 for user to user key exchange.
 
 const subtle = window.crypto.subtle;
 const enc = new TextEncoder();
